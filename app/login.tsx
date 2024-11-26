@@ -6,6 +6,7 @@ import {
   TextInput,
   TouchableOpacity,
   ActivityIndicator,
+  Image,
   Alert,
 } from "react-native";
 import { useRouter } from "expo-router";
@@ -49,7 +50,10 @@ export default function LoginScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.logoContainer}>
-        <Ionicons name="construct" size={80} color="red" />
+        <Image
+          source={require("../assets/1.png")} // Path to your image
+          style={styles.image}
+        />
         <Text style={styles.title}></Text>
       </View>
 
@@ -112,7 +116,7 @@ const styles = StyleSheet.create({
   },
   logoContainer: {
     alignItems: "center",
-    marginBottom: 50,
+    marginBottom: 20,
   },
   title: {
     fontSize: 24,
@@ -153,5 +157,10 @@ const styles = StyleSheet.create({
     textAlign: "center",
     fontSize: 16,
     fontWeight: "600",
+  },
+  image: {
+    width: 200, // Set width of the image
+    height: 200, // Set height of the image
+    resizeMode: "contain",
   },
 });

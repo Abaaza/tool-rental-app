@@ -7,6 +7,9 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -15,36 +18,50 @@ import { userService } from "../services/api";
 type UserData = {
   name: string;
   companyName: string;
-  role: "admin" | "customer"; // Only "admin" or "customer" are valid
+  role: "admin" | "customer";
 };
 
 export default function AddUserModal() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [userData, setUserData] = useState<UserData>({
     name: "",
     companyName: "",
-    role: "customer", // Role must be either "admin" or "customer"
+    role: "customer",
   });
 
   const handleSubmit = async () => {
-    if (!userData.name || !userData.companyName) {
+    // Validate inputs
+    if (!userData.name.trim() || !userData.companyName.trim()) {
       Alert.alert("Error", "All fields are required");
       return;
     }
 
+    setLoading(true);
+    setError(null);
+
     try {
       await userService.addUser(userData);
-      Alert.alert("Success", "Customer added successfully", [
+      Alert.alert("Success", "User added successfully", [
         { text: "OK", onPress: () => router.back() },
       ]);
-    } catch (error) {
-      Alert.alert("Error", "Failed to add customer");
+    } catch (error: any) {
+      setError(error.message);
+      Alert.alert(
+        "Error",
+        error.message || "Failed to add user. Please try again."
+      );
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <View style={styles.container}>
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+    >
       <View style={styles.header}>
         <TouchableOpacity
           onPress={() => router.back()}
@@ -56,44 +73,56 @@ export default function AddUserModal() {
         <View style={{ width: 24 }} />
       </View>
 
-      <View style={styles.form}>
-        <View style={styles.inputContainer}>
-          <Text style={styles.label}>Full Name</Text>
-          <TextInput
-            style={styles.input}
-            value={userData.name}
-            onChangeText={(text) =>
-              setUserData((prev) => ({ ...prev, name: text }))
-            }
-            placeholder="Enter user's full name"
-          />
-        </View>
+      <ScrollView style={styles.scrollView}>
+        <View style={styles.form}>
+          <View style={styles.inputContainer}>
+            <Text style={styles.label}>Full Name</Text>
+            <TextInput
+              style={styles.input}
+              value={userData.name}
+              onChangeText={(text) =>
+                setUserData((prev) => ({ ...prev, name: text }))
+              }
+              placeholder="Enter user's full name"
+              autoCapitalize="words"
+              autoCorrect={false}
+            />
+          </View>
 
-        <View style={styles.inputContainer}>
-          <Text style={styles.label}>Company Name</Text>
-          <TextInput
-            style={styles.input}
-            value={userData.companyName}
-            onChangeText={(text) =>
-              setUserData((prev) => ({ ...prev, companyName: text }))
-            }
-            placeholder="Enter company name"
-          />
-        </View>
+          <View style={styles.inputContainer}>
+            <Text style={styles.label}>Company Name</Text>
+            <TextInput
+              style={styles.input}
+              value={userData.companyName}
+              onChangeText={(text) =>
+                setUserData((prev) => ({ ...prev, companyName: text }))
+              }
+              placeholder="Enter company name"
+              autoCapitalize="words"
+              autoCorrect={false}
+            />
+          </View>
 
-        <TouchableOpacity
-          style={[styles.submitButton, loading && styles.disabledButton]}
-          onPress={handleSubmit}
-          disabled={loading}
-        >
-          {loading ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.submitButtonText}>Add User</Text>
-          )}
-        </TouchableOpacity>
-      </View>
-    </View>
+          {error && <Text style={styles.errorText}>{error}</Text>}
+
+          <TouchableOpacity
+            style={[
+              styles.submitButton,
+              loading && styles.disabledButton,
+              error && styles.errorButton,
+            ]}
+            onPress={handleSubmit}
+            disabled={loading}
+          >
+            {loading ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.submitButtonText}>Add User</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -101,6 +130,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#f5f5f5",
+  },
+  scrollView: {
+    flex: 1,
   },
   header: {
     flexDirection: "row",
@@ -137,14 +169,22 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#ddd",
   },
+  errorText: {
+    color: "#FF3B30",
+    marginBottom: 10,
+    textAlign: "center",
+  },
   submitButton: {
-    backgroundColor: "red",
+    backgroundColor: "#FF3B30",
     padding: 16,
     borderRadius: 8,
     marginTop: 20,
   },
   disabledButton: {
     backgroundColor: "#ccc",
+  },
+  errorButton: {
+    backgroundColor: "#FF3B30",
   },
   submitButtonText: {
     color: "#fff",

@@ -8,9 +8,11 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
+  Image,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import * as ImagePicker from "expo-image-picker";
 import { toolService } from "../services/api";
 
 export default function AddToolModal() {
@@ -23,6 +25,7 @@ export default function AddToolModal() {
     image: "default.jpg",
     price: "",
   });
+  const [imageUri, setImageUri] = useState<string | null>(null);
 
   useEffect(() => {
     // Pre-fill the NFC ID if it comes from scanning
@@ -34,9 +37,43 @@ export default function AddToolModal() {
     }
   }, [params.nfcId]);
 
+  const pickImage = async () => {
+    try {
+      // Request permission
+      const { status } =
+        await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert(
+          "Sorry",
+          "We need camera roll permissions to upload images."
+        );
+        return;
+      }
+
+      // Pick the image
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.5,
+      });
+
+      if (!result.canceled) {
+        setImageUri(result.assets[0].uri);
+        setToolData((prev) => ({
+          ...prev,
+          image: result.assets[0].uri,
+        }));
+      }
+    } catch (error) {
+      console.error("Error picking image:", error);
+      Alert.alert("Error", "Failed to pick image. Please try again.");
+    }
+  };
+
   const handleSubmit = async () => {
     if (!toolData.nfcId || !toolData.name || !toolData.price) {
-      Alert.alert("Error", "All fields are required");
+      Alert.alert("Error", "NFC ID, name and price are required");
       return;
     }
 
@@ -45,6 +82,7 @@ export default function AddToolModal() {
       await toolService.addTool({
         ...toolData,
         price: Number(toolData.price),
+        image: imageUri || "default.jpg", // Use default if no image selected
       });
       Alert.alert("Success", "Tool added successfully", [
         { text: "OK", onPress: () => router.back() },
@@ -119,6 +157,34 @@ export default function AddToolModal() {
             placeholder="Enter price"
             keyboardType="decimal-pad"
           />
+        </View>
+
+        <View style={styles.inputContainer}>
+          <Text style={styles.label}>Tool Image (Optional)</Text>
+          <TouchableOpacity
+            onPress={pickImage}
+            style={styles.imagePickerButton}
+          >
+            {imageUri ? (
+              <Image source={{ uri: imageUri }} style={styles.previewImage} />
+            ) : (
+              <View style={styles.imagePlaceholder}>
+                <Ionicons name="camera" size={24} color="#666" />
+                <Text style={styles.imagePlaceholderText}>Add Image</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+          {imageUri && (
+            <TouchableOpacity
+              onPress={() => {
+                setImageUri(null);
+                setToolData((prev) => ({ ...prev, image: "default.jpg" }));
+              }}
+              style={styles.removeImageButton}
+            >
+              <Text style={styles.removeImageText}>Remove Image</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         <TouchableOpacity
@@ -211,5 +277,39 @@ const styles = StyleSheet.create({
     textAlign: "center",
     fontSize: 16,
     fontWeight: "600",
+  },
+  imagePickerButton: {
+    width: "100%",
+    height: 200,
+    borderRadius: 8,
+    overflow: "hidden",
+    backgroundColor: "#f5f5f5",
+    borderWidth: 1,
+    borderColor: "#ddd",
+    borderStyle: "dashed",
+  },
+  previewImage: {
+    width: "100%",
+    height: "100%",
+    resizeMode: "cover",
+  },
+  imagePlaceholder: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  imagePlaceholderText: {
+    marginTop: 8,
+    color: "#666",
+    fontSize: 14,
+  },
+  removeImageButton: {
+    marginTop: 8,
+    padding: 8,
+    alignItems: "center",
+  },
+  removeImageText: {
+    color: "#FF3B30",
+    fontSize: 14,
   },
 });

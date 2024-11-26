@@ -6,34 +6,95 @@ import {
   ScrollView,
   RefreshControl,
   ActivityIndicator,
+  TouchableOpacity,
+  Alert,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { orderService } from "../services/api";
+import { Order, FilterTypes } from "../../types/order";
+import FilterComponent from "../../components/FilterComponent";
 
-type Order = {
-  _id: string;
-  nfcId: string;
-  toolName: string; // Add this
-  customerId: {
-    _id: string;
-    name: string;
-    companyName: string;
-  };
-  userId: {
-    _id: string;
-    name: string;
-    companyName: string;
-  };
-  timeDuration: number;
-  orderId: string;
-  createdAt: string;
-  expiryDate: string;
-};
+type SortField = FilterTypes["SortField"];
+type SortOrder = FilterTypes["SortOrder"];
+type StatusFilter = FilterTypes["StatusFilter"];
 
 export default function HistoryScreen() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+
+  // Filter states
+  const [selectedUser, setSelectedUser] = useState("all");
+  const [selectedCustomer, setSelectedCustomer] = useState("all");
+  const [selectedStatus, setSelectedStatus] = useState<StatusFilter>("all");
+  const [selectedTool, setSelectedTool] = useState("all");
+  const [sortField, setSortField] = useState<SortField>("toolName");
+  const [sortOrder, setSortOrder] = useState<SortOrder>("asc");
+
+  const resetFilters = () => {
+    setSelectedUser("all");
+    setSelectedCustomer("all");
+    setSelectedStatus("all");
+    setSelectedTool("all");
+    setSortField("toolName");
+    setSortOrder("asc");
+  };
+
+  const getFilteredOrders = () => {
+    return orders
+      .filter((order) => {
+        const userMatch =
+          selectedUser === "all" || order.userId._id === selectedUser;
+        const customerMatch =
+          selectedCustomer === "all" ||
+          order.customerId._id === selectedCustomer;
+        const toolMatch =
+          selectedTool === "all" || order.toolName === selectedTool;
+
+        let statusMatch;
+        if (selectedStatus === "all") {
+          statusMatch = true;
+        } else if (selectedStatus === "active") {
+          statusMatch = order.status === "active";
+        } else if (selectedStatus === "returned") {
+          statusMatch = order.status === "completed";
+        } else if (selectedStatus === "overdue") {
+          statusMatch = isExpired(order);
+        }
+
+        return userMatch && customerMatch && toolMatch && statusMatch;
+      })
+      .sort((a, b) => {
+        let compareA: string;
+        let compareB: string;
+
+        switch (sortField) {
+          case "assignedBy":
+            compareA = a.userId.name.toLowerCase();
+            compareB = b.userId.name.toLowerCase();
+            break;
+          case "assignedTo":
+            compareA = a.customerId.name.toLowerCase();
+            compareB = b.customerId.name.toLowerCase();
+            break;
+          case "status":
+            compareA = a.status;
+            compareB = b.status;
+            break;
+          case "toolName":
+            compareA = a.toolName.toLowerCase();
+            compareB = b.toolName.toLowerCase();
+            break;
+          default:
+            compareA = a.toolName.toLowerCase();
+            compareB = b.toolName.toLowerCase();
+        }
+
+        return sortOrder === "asc"
+          ? compareA.localeCompare(compareB)
+          : compareB.localeCompare(compareA);
+      });
+  };
 
   const loadOrders = async () => {
     try {
@@ -42,6 +103,7 @@ export default function HistoryScreen() {
       setOrders(response);
     } catch (error) {
       console.error("Error loading orders:", error);
+      Alert.alert("Error", "Failed to load orders. Please try again.");
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -55,6 +117,20 @@ export default function HistoryScreen() {
   const onRefresh = () => {
     setRefreshing(true);
     loadOrders();
+  };
+
+  const handleReturn = async (order: Order) => {
+    try {
+      await orderService.returnOrder(order.orderId);
+      Alert.alert("Success", "Order marked as returned successfully");
+      loadOrders();
+    } catch (error) {
+      console.error("Error returning order:", error);
+      Alert.alert(
+        "Error",
+        "Failed to mark order as returned. Please try again."
+      );
+    }
   };
 
   const formatDate = (dateString: string | undefined) => {
@@ -99,6 +175,7 @@ export default function HistoryScreen() {
   };
 
   const isExpired = (order: Order) => {
+    if (order.status === "completed") return false;
     try {
       const startDate = new Date(order.createdAt || new Date());
       const expiryDate = new Date(startDate);
@@ -119,57 +196,85 @@ export default function HistoryScreen() {
     );
   }
 
+  const filteredOrders = getFilteredOrders();
+
   return (
     <View style={styles.container}>
+      <FilterComponent
+        orders={orders}
+        selectedUser={selectedUser}
+        setSelectedUser={setSelectedUser}
+        selectedCustomer={selectedCustomer}
+        setSelectedCustomer={setSelectedCustomer}
+        selectedStatus={selectedStatus}
+        setSelectedStatus={setSelectedStatus}
+        selectedTool={selectedTool}
+        setSelectedTool={setSelectedTool}
+        onResetFilters={resetFilters}
+      />
       <ScrollView
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
         style={styles.scrollView}
       >
-        {orders.length === 0 ? (
+        {filteredOrders.length === 0 ? (
           <View style={styles.emptyState}>
             <Ionicons name="documents-outline" size={48} color="#666" />
             <Text style={styles.emptyStateText}>No rentals found</Text>
           </View>
         ) : (
-          orders.map((order) => {
+          filteredOrders.map((order) => {
             const expired = isExpired(order);
+            const isCompleted = order.status === "completed";
 
             return (
               <View key={order._id} style={styles.rentalCard}>
-                {/* Order ID and Status */}
                 <View style={styles.headerSection}>
                   <Text style={styles.orderId}>Order: {order.orderId}</Text>
                   <View
                     style={[
                       styles.statusBadge,
-                      { backgroundColor: expired ? "#FFEBEE" : "#E8F5E9" },
+                      {
+                        backgroundColor: isCompleted
+                          ? "#E3F2FD"
+                          : expired
+                          ? "#FFEBEE"
+                          : "#E8F5E9",
+                      },
                     ]}
                   >
                     <Text
                       style={[
                         styles.statusText,
-                        { color: expired ? "#C62828" : "#2E7D32" },
+                        {
+                          color: isCompleted
+                            ? "#1565C0"
+                            : expired
+                            ? "#C62828"
+                            : "#2E7D32",
+                        },
                       ]}
                     >
-                      {expired ? "EXPIRED" : "ACTIVE"}
+                      {isCompleted
+                        ? "RETURNED"
+                        : expired
+                        ? "OVERDUE"
+                        : "ACTIVE"}
                     </Text>
                   </View>
                 </View>
 
                 <View style={styles.divider} />
 
-                {/* Tool Info */}
                 <View style={styles.detailRow}>
                   <Ionicons name="build-outline" size={20} color="#666" />
                   <View style={styles.detailContent}>
                     <Text style={styles.detailLabel}>Tool</Text>
-                    <Text style={styles.detailText}>{order.nfcId}</Text>
+                    <Text style={styles.detailText}>{order.toolName}</Text>
                   </View>
                 </View>
 
-                {/* Assigned To */}
                 <View style={styles.detailRow}>
                   <Ionicons name="person-outline" size={20} color="#666" />
                   <View style={styles.detailContent}>
@@ -180,7 +285,6 @@ export default function HistoryScreen() {
                   </View>
                 </View>
 
-                {/* Assigned By */}
                 <View style={styles.detailRow}>
                   <Ionicons name="create-outline" size={20} color="#666" />
                   <View style={styles.detailContent}>
@@ -193,7 +297,6 @@ export default function HistoryScreen() {
 
                 <View style={styles.divider} />
 
-                {/* Dates Section */}
                 <View style={styles.datesContainer}>
                   <View style={styles.dateColumn}>
                     <Text style={styles.dateLabel}>Assigned Date</Text>
@@ -210,14 +313,35 @@ export default function HistoryScreen() {
                   </View>
 
                   <View style={styles.dateColumn}>
-                    <Text style={styles.dateLabel}>Expiry Date</Text>
+                    <Text style={styles.dateLabel}>
+                      {isCompleted ? "Return Date" : "Expiry Date"}
+                    </Text>
                     <Text
-                      style={[styles.dateText, expired && styles.expiredText]}
+                      style={[
+                        styles.dateText,
+                        expired && !isCompleted && styles.expiredText,
+                      ]}
                     >
-                      {getExpiryDate(order)}
+                      {isCompleted
+                        ? formatDate(order.returnDate)
+                        : getExpiryDate(order)}
                     </Text>
                   </View>
                 </View>
+
+                {!isCompleted && (
+                  <TouchableOpacity
+                    style={[
+                      styles.returnButton,
+                      expired && styles.returnButtonOverdue,
+                    ]}
+                    onPress={() => handleReturn(order)}
+                  >
+                    <Text style={styles.returnButtonText}>
+                      Mark as Returned
+                    </Text>
+                  </TouchableOpacity>
+                )}
               </View>
             );
           })
@@ -290,6 +414,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "600",
   },
+
   divider: {
     height: 1,
     backgroundColor: "#eee",
@@ -342,5 +467,20 @@ const styles = StyleSheet.create({
   },
   expiredText: {
     color: "#C62828",
+  },
+  returnButton: {
+    marginTop: 16,
+    backgroundColor: "#2E7D32",
+    paddingVertical: 7,
+    borderRadius: 8,
+    alignItems: "center",
+  },
+  returnButtonOverdue: {
+    backgroundColor: "#C62828",
+  },
+  returnButtonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
   },
 });
